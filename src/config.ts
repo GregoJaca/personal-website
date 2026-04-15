@@ -36,4 +36,9 @@ export const SOCIAL_LINKS = [
     url: 'https://calendly.com/gregorio-jaca/30min',
     icon: 'calendar',
   },
+  {
+    name: 'Email',
+    url: 'mailto:gregorio.jaca@gmail.com',
+    icon: 'mail',
+  },
 ];
