@@ -5,14 +5,56 @@
 <script>
     /** CONFIGURATION **/
     const CONFIG = {
-        latticeScale: 15,         // Larger grid for background
-        lineWidth: 2,            // Subtle thickness
-        growthSpeed: 3,          // Steps per frame
+        latticeScale: 8,         // Grid density
+        lineWidth: 1.0,          // Subtle thickness
+        growthSpeed: 15,          // Steps per frame
         expansionRate: 3,        // Branches per step per color
+        threshold: 0.8,          // Physical limit for invasion
         colorRed: 'rgba(230, 57, 70, 0.3)',   // Transparent Red
         colorBlue: 'rgba(145, 180, 204, 0.3)',  // Transparent Blue
         bgLineColor: 'rgba(40, 40, 40, 0.15)',  // Very faint grid
     };
+
+    /** MIN-HEAP FOR PERCOLATION PERFORMANCE **/
+    class MinHeap {
+        heap: { edge: Edge; weight: number }[] = [];
+        push(node: { edge: Edge; weight: number }) {
+            this.heap.push(node);
+            this.bubbleUp();
+        }
+        pop() {
+            if (this.size() === 0) return null;
+            if (this.size() === 1) return this.heap.pop();
+            const min = this.heap[0];
+            this.heap[0] = this.heap.pop()!;
+            this.bubbleDown();
+            return min;
+        }
+        peek() {
+            return this.size() > 0 ? this.heap[0] : null;
+        }
+        size() { return this.heap.length; }
+        bubbleUp() {
+            let idx = this.heap.length - 1;
+            while (idx > 0) {
+                let parentIdx = Math.floor((idx - 1) / 2);
+                if (this.heap[idx].weight >= this.heap[parentIdx].weight) break;
+                [this.heap[idx], this.heap[parentIdx]] = [this.heap[parentIdx], this.heap[idx]];
+                idx = parentIdx;
+            }
+        }
+        bubbleDown() {
+            let idx = 0;
+            while (true) {
+                let left = 2 * idx + 1, right = 2 * idx + 2, smallest = idx;
+                if (left < this.heap.length && this.heap[left].weight < this.heap[smallest].weight) smallest = left;
+                if (right < this.heap.length && this.heap[right].weight < this.heap[smallest].weight) smallest = right;
+                if (smallest === idx) break;
+                [this.heap[idx], this.heap[smallest]] = [this.heap[smallest], this.heap[idx]];
+                idx = smallest;
+            }
+        }
+    }
 
     let canvas: HTMLCanvasElement;
     let ctx: CanvasRenderingContext2D;
@@ -23,13 +65,15 @@
         x1: number; y1: number;
         x2: number; y2: number;
         weight: number; state: number;
+        isWrap: boolean;
     }
 
     let edges: Edge[] = [];
     let redNodes = new Set<string>();
     let blueNodes = new Set<string>();
-    let redBoundary: Edge[] = [];
-    let blueBoundary: Edge[] = [];
+    let redHeap = new MinHeap();
+    let blueHeap = new MinHeap();
+    let nodeToEdges = new Map<string, Edge[]>();
     let isFull = false;
 
     function init() {
@@ -51,6 +95,9 @@
         edges = [];
         redNodes.clear();
         blueNodes.clear();
+        redHeap = new MinHeap();
+        blueHeap = new MinHeap();
+        nodeToEdges.clear();
         isFull = false;
 
         for (let i = 0; i < cols; i++) {
@@ -58,57 +105,34 @@
                 const x = i * CONFIG.latticeScale;
                 const y = j * CONFIG.latticeScale;
                 
-                // Horizontal edge (with wrapping)
-                if (i < cols - 1 || true) { // Always create horizontally
-                    const nextI = (i + 1) % cols;
-                    edges.push({ 
-                        n1: `${i},${j}`, n2: `${nextI},${j}`,
-                        x1: x, y1: y, x2: nextI * CONFIG.latticeScale, y2: j * CONFIG.latticeScale,
-                        weight: Math.random(), state: 0,
-                        isWrap: nextI < i
-                    });
-                    if (i === cols - 1) edges[edges.length-1].x2 = width + CONFIG.latticeScale; // visual fix
-                }
-                
-                // Vertical edge (with wrapping)
-                if (j < rows - 1 || true) { // Always create vertically
-                    const nextJ = (j + 1) % rows;
-                    edges.push({ 
-                        n1: `${i},${j}`, n2: `${i},${nextJ}`,
-                        x1: x, y1: y, x2: i * CONFIG.latticeScale, y2: nextJ * CONFIG.latticeScale,
-                        weight: Math.random(), state: 0,
-                        isWrap: nextJ < j
-                    });
-                    if (j === rows - 1) edges[edges.length-1].y2 = height + CONFIG.latticeScale; // visual fix
-                }
+                const nextI = (i + 1) % cols;
+                const nextJ = (j + 1) % rows;
+
+                const eH: Edge = { 
+                    n1: `${i},${j}`, n2: `${nextI},${j}`,
+                    x1: x, y1: y, x2: nextI < i ? width + CONFIG.latticeScale : nextI * CONFIG.latticeScale, y2: y,
+                    weight: Math.random(), state: 0, isWrap: nextI < i
+                };
+                const eV: Edge = { 
+                    n1: `${i},${j}`, n2: `${i},${nextJ}`,
+                    x1: x, y1: y, x2: x, y2: nextJ < j ? height + CONFIG.latticeScale : nextJ * CONFIG.latticeScale,
+                    weight: Math.random(), state: 0, isWrap: nextJ < j
+                };
+                edges.push(eH, eV);
+                [eH.n1, eH.n2].forEach(n => { if(!nodeToEdges.has(n)) nodeToEdges.set(n, []); nodeToEdges.get(n)!.push(eH); });
+                [eV.n1, eV.n2].forEach(n => { if(!nodeToEdges.has(n)) nodeToEdges.set(n, []); nodeToEdges.get(n)!.push(eV); });
             }
         }
 
-        // 3 initial points for each color
-        for (let k = 0; k < 3; k++) {
-            redNodes.add(`${Math.floor(Math.random() * cols)},${Math.floor(Math.random() * rows)}`);
-            blueNodes.add(`${Math.floor(Math.random() * cols)},${Math.floor(Math.random() * rows)}`);
+        function addSeed(type: number) {
+            const node = `${Math.floor(Math.random() * cols)},${Math.floor(Math.random() * rows)}`;
+            if (type === 1) redNodes.add(node); else blueNodes.add(node);
+            nodeToEdges.get(node)?.forEach(e => {
+                if (e.state === 0) (type === 1 ? redHeap : blueHeap).push({ edge: e, weight: e.weight });
+            });
         }
 
-        updateBoundaries();
-    }
-
-    function updateBoundaries() {
-        redBoundary = [];
-        blueBoundary = [];
-        for (let e of edges) {
-            if (e.state !== 0) continue;
-            
-            const r1 = redNodes.has(e.n1), r2 = redNodes.has(e.n2);
-            const b1 = blueNodes.has(e.n1), b2 = blueNodes.has(e.n2);
-
-            if ((r1 && !r2 && !blueNodes.has(e.n2)) || (r2 && !r1 && !blueNodes.has(e.n1))) {
-                redBoundary.push(e);
-            }
-            if ((b1 && !b2 && !redNodes.has(e.n2)) || (b2 && !b1 && !redNodes.has(e.n1))) {
-                blueBoundary.push(e);
-            }
-        }
+        for (let k = 0; k < 3; k++) { addSeed(1); addSeed(2); }
     }
 
     function draw() {
@@ -155,32 +179,41 @@
 
     function animate() {
         if (!isFull) {
-            let modified = false;
             for (let s = 0; s < CONFIG.growthSpeed; s++) {
-                // Expansion: Pick the best N edges for EACH color in this step
-                redBoundary.sort((a,b) => a.weight - b.weight);
-                blueBoundary.sort((a,b) => a.weight - b.weight);
-
-                const color1Moves = redBoundary.slice(0, CONFIG.expansionRate);
-                const color2Moves = blueBoundary.slice(0, CONFIG.expansionRate);
-
-                if (color1Moves.length === 0 && color2Moves.length === 0) break;
-
-                color1Moves.forEach(e => {
-                    if (e.state === 0) {
-                        e.state = 1; redNodes.add(e.n1); redNodes.add(e.n2);
-                        modified = true;
+                for (let r = 0; r < CONFIG.expansionRate; r++) {
+                    const rMove = redHeap.pop();
+                    if (rMove && rMove.edge.state === 0 && rMove.weight < CONFIG.threshold) {
+                        rMove.edge.state = 1;
+                        [rMove.edge.n1, rMove.edge.n2].forEach(n => {
+                            if (!redNodes.has(n)) {
+                                redNodes.add(n);
+                                nodeToEdges.get(n)?.forEach(e => {
+                                    if (e.state === 0) redHeap.push({ edge: e, weight: e.weight });
+                                });
+                            }
+                        });
                     }
-                });
-                color2Moves.forEach(e => {
-                    if (e.state === 0) {
-                        e.state = 2; blueNodes.add(e.n1); blueNodes.add(e.n2);
-                        modified = true;
+                    const bMove = blueHeap.pop();
+                    if (bMove && bMove.edge.state === 0 && bMove.weight < CONFIG.threshold) {
+                        bMove.edge.state = 2;
+                        [bMove.edge.n1, bMove.edge.n2].forEach(n => {
+                            if (!blueNodes.has(n)) {
+                                blueNodes.add(n);
+                                nodeToEdges.get(n)?.forEach(e => {
+                                    if (e.state === 0) blueHeap.push({ edge: e, weight: e.weight });
+                                });
+                            }
+                        });
                     }
-                });
+                }
+                
+                // If the next best move in both heaps is ABOVE the threshold, we are stuck
+                const rTop = redHeap.peek();
+                const bTop = blueHeap.peek();
+                const rLocked = !rTop || rTop.weight >= CONFIG.threshold;
+                const bLocked = !bTop || bTop.weight >= CONFIG.threshold;
 
-                if (modified) updateBoundaries();
-                else { isFull = true; break; }
+                if (rLocked && bLocked) { isFull = true; break; }
             }
         }
 
