@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Percolation Variant 1: Click-to-Percolate</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1A1A1A; }
+        canvas { display: block; }
+        #info {
+            position: fixed; top: 10px; left: 10px;
+            color: #555; font-family: sans-serif; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Click anywhere to start percolation</div>
+    <canvas id="canvas"></canvas>
+    <script>
+        // --- GLOBAL CONSTANTS ---
+        const GRID_SIZE = 40;       // Number of rows/cols
+        const CELL_SIZE = 20;       // Size of each cell in pixels (auto-scales if needed)
+        const P_THRESHOLD = 0.5927; // Standard site percolation threshold for square lattice
+        const ANIMATION_SPEED = 50; // ms per step
+        const COLOR_EMPTY = '#1A1A1A';
+        const COLOR_OCCUPIED = '#333';
+        const COLOR_PERCOLATED = '#00FFCC';
+        const LINE_WIDTH = 1;
+
+        // --- STATE ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, cols, rows;
+        let grid = []; // 0: empty, 1: occupied, 2: percolated
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.ceil(width / CELL_SIZE);
+            rows = Math.ceil(height / CELL_SIZE);
+            resetGrid();
+            draw();
+        }
+
+        function resetGrid() {
+            grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c] === 0) continue;
+                    ctx.fillStyle = grid[r][c] === 2 ? COLOR_PERCOLATED : COLOR_OCCUPIED;
+                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
+                }
+            }
+        }
+
+        function percolate(startR, startC) {
+            // First, randomly populate the grid based on P_THRESHOLD
+            resetGrid();
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (Math.random() < P_THRESHOLD) {
+                        grid[r][c] = 1;
+                    }
+                }
+            }
+
+            // Ensure start point is occupied
+            grid[startR][startC] = 1;
+
+            // BFS for percolation
+            let queue = [{ r: startR, c: startC }];
+            let visited = new Set();
+            visited.add(`${startR},${startC}`);
+
+            function step() {
+                if (queue.length === 0) return;
+
+                let nextQueue = [];
+                for (let pos of queue) {
+                    const { r, c } = pos;
+                    if (grid[r][c] === 1) {
+                        grid[r][c] = 2; // Percolate
+                    }
+
+                    const neighbors = [
+                        { r: r - 1, c }, { r: r + 1, c },
+                        { r, c: c - 1 }, { r, c: c + 1 }
+                    ];
+
+                    for (let n of neighbors) {
+                        if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols &&
+                            grid[n.r][n.c] === 1 && !visited.has(`${n.r},${n.c}`)) {
+                            visited.add(`${n.r},${n.c}`);
+                            nextQueue.push(n);
+                        }
+                    }
+                }
+                queue = nextQueue;
+                draw();
+                setTimeout(step, ANIMATION_SPEED);
+            }
+
+            step();
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const c = Math.floor(x / CELL_SIZE);
+            const r = Math.floor(y / CELL_SIZE);
+            percolate(r, c);
+        });
+
+        window.addEventListener('resize', init);
+        init();
+    </script>
+</body>
+</html>

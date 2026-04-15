@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Percolation Variant 3: Autonomous Invasion</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1A1A1A; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // --- GLOBAL CONSTANTS ---
+        const CELL_SIZE = 10;
+        const P_THRESHOLD = 0.6;    // Probability that a cell is "porous"
+        const INVASION_SPEED = 20;  // MS between steps
+        const COLOR_EMPTY = '#1A1A1A';
+        const COLOR_POROUS = '#222';
+        const COLOR_FLUID = '#00AAFF';
+        const LINE_WIDTH = 0.5;
+
+        // --- STATE ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, cols, rows;
+        let grid = []; // 0: solid, 1: porous, 2: filled
+        let queue = [];
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.ceil(width / CELL_SIZE);
+            rows = Math.ceil(height / CELL_SIZE);
+            reset();
+        }
+
+        function reset() {
+            grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+            queue = [];
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (Math.random() < P_THRESHOLD) {
+                        grid[r][c] = 1;
+                    }
+                }
+            }
+            // Start invasion from top
+            for (let c = 0; c < cols; c++) {
+                if (grid[0][c] === 1) {
+                    queue.push({ r: 0, c });
+                }
+            }
+            draw();
+            animate();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c] === 0) continue;
+                    ctx.fillStyle = grid[r][c] === 2 ? COLOR_FLUID : COLOR_POROUS;
+                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
+                }
+            }
+        }
+
+        function animate() {
+            if (queue.length === 0) {
+                setTimeout(reset, 2000); // Restart after a delay
+                return;
+            }
+
+            // Invade next step
+            let nextQueue = [];
+            let processed = false;
+            
+            // To make it look like fluid, we can process a few at a time or use a priority queue for "least resistance"
+            // Here we'll just do a standard BFS invasion
+            const batchSize = Math.max(1, Math.floor(cols / 10));
+            
+            for (let i = 0; i < batchSize && queue.length > 0; i++) {
+                const { r, c } = queue.shift();
+                if (grid[r][c] === 1) {
+                    grid[r][c] = 2;
+                    processed = true;
+
+                    const neighbors = [
+                        { r: r + 1, c }, { r: r, c: c - 1 }, { r, c: c + 1 }, { r: r - 1, c }
+                    ];
+
+                    for (let n of neighbors) {
+                        if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols && grid[n.r][n.c] === 1) {
+                            // Check if already in queue or about to be
+                            queue.push(n);
+                        }
+                    }
+                }
+            }
+
+            draw();
+            setTimeout(animate, INVASION_SPEED);
+        }
+
+        window.addEventListener('resize', init);
+        init();
+    </script>
+</body>
+</html>

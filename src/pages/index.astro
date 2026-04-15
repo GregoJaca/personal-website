@@ -1,0 +1,122 @@
+---
+import Layout from '../layouts/Layout.astro';
+import PercolationBackground from '../components/PercolationBackground.astro';
+import GitHubGraph from '../components/GitHubGraph';
+import { LAYOUT_CONFIG, SOCIAL_LINKS } from '../config';
+---
+
+<Layout title="Gregorio Jaca">
+	<PercolationBackground />
+	
+	<main class={`mx-auto ${LAYOUT_CONFIG.columnWidth} px-6 py-24 min-h-screen flex flex-col justify-center`}>
+		<header class="mb-12">
+			<h1 class={`${LAYOUT_CONFIG.headerFontSize} font-bold ${LAYOUT_CONFIG.titleColor} mb-4 tracking-tight`}>
+				Gregorio Jaca
+			</h1>
+			<nav class="flex gap-6 mt-8">
+				{SOCIAL_LINKS.map(link => (
+					<a 
+						href={link.url} 
+						target="_blank" 
+						rel="noopener noreferrer" 
+						class={`${LAYOUT_CONFIG.linkColor} transition-colors duration-200`}
+						title={link.name}
+					>
+                        {link.icon === 'github' && (
+                            <svg class={LAYOUT_CONFIG.iconSize} viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+                        )}
+                        {link.icon === 'linkedin' && (
+                            <svg class={LAYOUT_CONFIG.iconSize} viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.238 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                        )}
+                        {link.icon === 'twitter' && (
+                            <svg class={LAYOUT_CONFIG.iconSize} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.045 4.126H5.078z"/></svg>
+                        )}
+                        {link.icon === 'custom' && (
+                            <div class={`${LAYOUT_CONFIG.iconSize} bg-zinc-700 rounded-sm flex items-center justify-center font-bold text-[10px]`}>BC</div>
+                        )}
+					</a>
+				))}
+			</nav>
+		</header>
+
+		<section class={`${LAYOUT_CONFIG.spacing} ${LAYOUT_CONFIG.baseFontSize} leading-relaxed`}>
+			<p>
+				Hello, I'm Gregorio Jaca. Welcome to my personal corner of the web. This site is a minimalist reflection of my digital identity and interests, specifically in the intersection of algorithms, physics, and distributed systems.
+			</p>
+			<p>
+				The background you see is a real-time simulation of percolation theory. Percolation is a mathematical framework that describes the behavior of connected clusters in a random graph or lattice. It has profound applications in material science, neurology, and phase transitions.
+			</p>
+			<p>
+				Currently, I am exploring the boundaries of agentic AI and how autonomous systems can be leveraged to solve complex engineering challenges. I find beauty in simplicity and robustness, often leaning towards minimal and efficient implementations in all my projects.
+			</p>
+			<p>
+				This portfolio is built using Astro and Tailwind CSS, prioritizing performance and clarity. It is statically generated and hosted on GitHub Pages, ensuring a fast and reliable experience for all visitors across different devices.
+			</p>
+			<p>
+				Feel free to reach out to me through any of the links above. I am always open to discussing new ideas, collaborating on open-source projects, or simply exchanging thoughts on the future of technology and its impact on society.
+			</p>
+		</section>
+
+		<section class="mt-16">
+            <h2 class="text-xs font-medium text-zinc-500 mb-6 uppercase tracking-widest">Contributions in the last year</h2>
+			<div id="no-scrollbar-container" class="bg-zinc-900/40 p-10 rounded-xl border border-zinc-800/10 backdrop-blur-md overflow-x-auto transition-all duration-500">
+				<GitHubGraph client:visible />
+			</div>
+		</section>
+
+		<section class="mt-16 mb-24">
+			<h2 class="text-xl font-semibold mb-6 text-zinc-200">Design Prototypes</h2>
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+				{[1, 2, 3, 4].map(v => (
+					<a 
+						href={`${import.meta.env.BASE_URL}prototypes/variant${v}.html`}
+						class="block p-4 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 transition-colors"
+					>
+						<h3 class="font-medium text-zinc-200">Percolation Variant {v}</h3>
+						<p class="text-sm text-zinc-500 mt-1">
+							{v === 1 && "Interactive: Click-to-percolate from cursor."}
+							{v === 2 && "Scroll-driven: Threshold maps to scroll position."}
+							{v === 3 && "Autonomous: Continuous invasion simulation."}
+							{v === 4 && "Static: Seed-based spanning cluster highlights."}
+						</p>
+					</a>
+				))}
+			</div>
+		</section>
+	</main>
+
+</Layout>
+<style is:global>
+    /* Styling for the new React GitHub Calendar */
+    .github-graph-container rect {
+        rx: 2px;
+        ry: 2px;
+        shape-rendering: geometricPrecision;
+    }
+    .github-graph-container svg {
+        margin: 0 auto;
+        display: block;
+    }
+    
+    /* 
+       THE ULTIMATE SCROLLBAR ERASER 
+       Targeting the container and ALL its children to ensure 
+       no library-injected elements show a scrollbar.
+    */
+    #no-scrollbar-container,
+    #no-scrollbar-container *,
+    #no-scrollbar-container::-webkit-scrollbar,
+    #no-scrollbar-container *::-webkit-scrollbar {
+        scrollbar-width: none !important; /* Firefox */
+        -ms-overflow-style: none !important;  /* IE and Edge */
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #no-scrollbar-container::-webkit-scrollbar,
+    #no-scrollbar-container *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+    }
+</style>

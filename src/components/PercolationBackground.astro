@@ -1,0 +1,110 @@
+---
+---
+<canvas id="percolation-canvas" class="fixed top-0 left-0 w-full h-full -z-10"></canvas>
+
+<script>
+    // Configuration for the background
+    const CELL_SIZE = 25;
+    const P_THRESHOLD = 0.5927;
+    const CYCLE_DURATION = 8000; // 8 seconds per cycle
+    const COLOR_OCCUPIED = 'rgba(40, 40, 40, 0.4)';
+    const COLOR_PERCOLATED = 'rgba(0, 255, 204, 0.3)';
+    const LINE_WIDTH = 1;
+
+    let canvas: HTMLCanvasElement;
+    let ctx: CanvasRenderingContext2D;
+    let width: number, height: number, cols: number, rows: number;
+    let grid: number[][] = [];
+    let startTime: number;
+
+    function init() {
+        canvas = document.getElementById('percolation-canvas') as HTMLCanvasElement;
+        if (!canvas) return;
+        ctx = canvas.getContext('2d')!;
+        
+        resize();
+        newSeed();
+        animate();
+    }
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        cols = Math.ceil(width / CELL_SIZE);
+        rows = Math.ceil(height / CELL_SIZE);
+    }
+
+    function newSeed() {
+        grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (Math.random() < P_THRESHOLD) {
+                    grid[r][c] = 1;
+                }
+            }
+        }
+
+        // Spanning check
+        let queue: {r: number, c: number}[] = [];
+        let visited = new Set<string>();
+        for (let c = 0; c < cols; c++) {
+            if (grid[0][c] === 1) {
+                queue.push({ r: 0, c });
+                visited.add(`0,${c}`);
+            }
+        }
+
+        let cluster: {r: number, c: number}[] = [];
+        let spans = false;
+        while (queue.length > 0) {
+            const { r, c } = queue.shift()!;
+            cluster.push({ r, c });
+            if (r === rows - 1) spans = true;
+
+            const neighbors = [{r:r+1,c},{r:r-1,c},{r,c:c+1},{r,c:c-1}];
+            for (let n of neighbors) {
+                if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols && grid[n.r][n.c] === 1 && !visited.has(`${n.r},${n.c}`)) {
+                    visited.add(`${n.r},${n.c}`);
+                    queue.push(n);
+                }
+            }
+        }
+
+        if (spans) {
+            for (let p of cluster) grid[p.r][p.c] = 2;
+        }
+
+        startTime = Date.now();
+    }
+
+    function animate() {
+        const now = Date.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed > CYCLE_DURATION) {
+            newSeed();
+        }
+
+        const alpha = Math.sin((elapsed / CYCLE_DURATION) * Math.PI);
+        
+        ctx.clearRect(0, 0, width, height);
+        ctx.globalAlpha = alpha;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (grid[r][c] === 0) continue;
+                ctx.fillStyle = grid[r][c] === 2 ? COLOR_PERCOLATED : COLOR_OCCUPIED;
+                ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
+            }
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+        resize();
+        newSeed();
+    });
+
+    init();
+</script>

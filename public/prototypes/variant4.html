@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Percolation Variant 4: Static Threshold Fade</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1A1A1A; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // --- GLOBAL CONSTANTS ---
+        const CELL_SIZE = 20;
+        const P_THRESHOLD = 0.5927;
+        const CYCLE_DURATION = 5000; // ms for one full cycle
+        const COLOR_EMPTY = '#1A1A1A';
+        const COLOR_OCCUPIED = '#222';
+        const COLOR_PERCOLATED = '#FF00FF';
+        const LINE_WIDTH = 1;
+
+        // --- STATE ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, cols, rows;
+        let grid = [];
+        let startTime = Date.now();
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.ceil(width / CELL_SIZE);
+            rows = Math.ceil(height / CELL_SIZE);
+            newSeed();
+            animate();
+        }
+
+        function newSeed() {
+            grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+            // Populate
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (Math.random() < P_THRESHOLD) {
+                        grid[r][c] = 1;
+                    }
+                }
+            }
+
+            // Find spanning cluster (from top to bottom)
+            let queue = [];
+            let visited = new Set();
+            for (let c = 0; c < cols; c++) {
+                if (grid[0][c] === 1) {
+                    queue.push({ r: 0, c });
+                    visited.add(`0,${c}`);
+                }
+            }
+
+            let spanning = false;
+            let cluster = [];
+            while (queue.length > 0) {
+                const { r, c } = queue.shift();
+                cluster.push({ r, c });
+                if (r === rows - 1) spanning = true;
+
+                const neighbors = [
+                    { r: r + 1, c }, { r: r, c: c - 1 }, { r, c: c + 1 }, { r: r - 1, c }
+                ];
+
+                for (let n of neighbors) {
+                    if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols &&
+                        grid[n.r][n.c] === 1 && !visited.has(`${n.r},${n.c}`)) {
+                        visited.add(`${n.r},${n.c}`);
+                        queue.push(n);
+                    }
+                }
+            }
+
+            if (spanning) {
+                for (let pos of cluster) {
+                    grid[pos.r][pos.c] = 2; // Spanning cluster
+                }
+            }
+            
+            startTime = Date.now();
+        }
+
+        function animate() {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            
+            if (elapsed > CYCLE_DURATION) {
+                newSeed();
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            const alpha = Math.sin((elapsed / CYCLE_DURATION) * Math.PI); // Fade in/out
+            
+            ctx.clearRect(0, 0, width, height);
+            ctx.globalAlpha = alpha;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c] === 0) continue;
+                    ctx.fillStyle = grid[r][c] === 2 ? COLOR_PERCOLATED : COLOR_OCCUPIED;
+                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', init);
+        init();
+    </script>
+</body>
+</html>

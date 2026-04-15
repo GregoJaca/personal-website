@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Percolation Variant 2: Scroll-Driven P-Value</title>
+    <style>
+        body { margin: 0; height: 300vh; background: #1A1A1A; color: #555; font-family: sans-serif; }
+        canvas { position: fixed; top: 0; left: 0; z-index: -1; }
+        #info {
+            position: fixed; top: 10px; left: 10px;
+            pointer-events: none; background: rgba(26,26,26,0.8); padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Scroll down to increase probability <i>p</i>. Current p: <span id="p-val">0.00</span></div>
+    <div style="height: 300vh;"></div>
+    <canvas id="canvas"></canvas>
+    <script>
+        // --- GLOBAL CONSTANTS ---
+        const CELL_SIZE = 15;
+        const COLOR_EMPTY = '#1A1A1A';
+        const COLOR_OCCUPIED = '#2A2A2A';
+        const COLOR_PERCOLATED = '#FFD700';
+        const LINE_WIDTH = 1;
+
+        // --- STATE ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const pSpan = document.getElementById('p-val');
+        let width, height, cols, rows;
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.ceil(width / CELL_SIZE);
+            rows = Math.ceil(height / CELL_SIZE);
+            update();
+        }
+
+        function update() {
+            const scrollPercent = window.scrollY / (document.body.scrollHeight - window.innerHeight);
+            const p = Math.min(1, Math.max(0, scrollPercent));
+            pSpan.textContent = p.toFixed(2);
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Create a seed based on some criteria if needed, or just random
+            // For smoother transition, we could use a deterministic noise or fixed random values
+            // Here we'll just regenerate to show the threshold effect
+            
+            let grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (Math.random() < p) {
+                        grid[r][c] = 1;
+                    }
+                }
+            }
+
+            // Simple percolation check (from top row)
+            let queue = [];
+            let visited = new Set();
+            for (let c = 0; c < cols; c++) {
+                if (grid[0][c] === 1) {
+                    queue.push({ r: 0, c });
+                    visited.add(`0,${c}`);
+                }
+            }
+
+            while (queue.length > 0) {
+                const { r, c } = queue.shift();
+                grid[r][c] = 2; // Marked as percolated
+
+                const neighbors = [
+                    { r: r - 1, c }, { r: r + 1, c },
+                    { r, c: c - 1 }, { r, c: c + 1 }
+                ];
+
+                for (let n of neighbors) {
+                    if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols &&
+                        grid[n.r][n.c] === 1 && !visited.has(`${n.r},${n.c}`)) {
+                        visited.add(`${n.r},${n.c}`);
+                        queue.push(n);
+                    }
+                }
+            }
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c] === 0) continue;
+                    ctx.fillStyle = grid[r][c] === 2 ? COLOR_PERCOLATED : COLOR_OCCUPIED;
+                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
+                }
+            }
+        }
+
+        window.addEventListener('scroll', update);
+        window.addEventListener('resize', init);
+        init();
+    </script>
+</body>
+</html>
