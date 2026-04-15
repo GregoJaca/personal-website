@@ -31,4 +31,9 @@ export const SOCIAL_LINKS = [
     url: 'https://badcompany.xyz',
     icon: 'custom',
   },
+  {
+    name: 'Calendly',
+    url: 'https://calendly.com/gregorio-jaca/30min',
+    icon: 'calendar',
+  },
 ];
