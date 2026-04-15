@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Variant 3.4: Radial Web</title>
+    <title>Variant 4: Diffusive Flow</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -11,139 +11,96 @@
     </style>
 </head>
 <body>
-    <div id="controls">VARIANT 3.4: RADIAL WEB // SPIDERWEB INFILTRATION</div>
+    <div id="controls">V4: DIFFUSIVE FLOW // MEANDERING NETWORK DRIFT</div>
     <canvas id="canvas"></canvas>
 
     <script>
         /** CONFIGURATION **/
         const CONFIG = {
-            numCircles: 20,         // Number of concentric rings
-            numRadials: 40,         // Number of lines originating from center
-            lineWidth: 2,           // Thickness of web paths
-            speed: 5,               // Edges per frame
-            bgLineColor: '#222',    // Faint uninvaded color
-            activeLineColor: '#70e000', // Lime green / Web color
+            latticeScale: 30,
+            lineWidth: 3,
+            growthSpeed: 8,
+            driftRate: 10,         // Bonds moved per frame
+            colorRed: '#e63946',
+            colorBlue: '#91B4CC',
+            bgLineColor: '#222',
         };
 
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         
-        let width, height, centerX, centerY;
-        let edges = []; // { n1, n2, x1, y1, x2, y2, weight, invaded }
-        let invadedNodes = new Set();
-        let boundaryEdges = [];
-        let animationId;
+        let width, height, cols, rows, edges = [], redNodes = new Set(), blueNodes = new Set();
+        let redBoundary = [], blueBoundary = [], isFull = false;
 
         function init() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
-            centerX = width / 2;
-            centerY = height / 2;
-            
-            edges = [];
-            invadedNodes.clear();
-            boundaryEdges = [];
-
-            const maxRadius = Math.max(width, height) / 1.5;
-            const radiusStep = maxRadius / CONFIG.numCircles;
-            const angleStep = (Math.PI * 2) / CONFIG.numRadials;
-
-            // Generate nodes (r, a) where r is ring index, a is radial index
-            // Edges connect (r, a) to (r+1, a) [radial] and (r, a) to (r, a+1) [circular]
-            for (let r = 0; r < CONFIG.numCircles; r++) {
-                for (let a = 0; a < CONFIG.numRadials; a++) {
-                    const r1 = r * radiusStep;
-                    const r2 = (r + 1) * radiusStep;
-                    const a1 = a * angleStep;
-                    const a2 = ((a + 1) % CONFIG.numRadials) * angleStep;
-
-                    const x1 = centerX + Math.cos(a1) * r1;
-                    const y1 = centerY + Math.sin(a1) * r1;
-                    const x2 = centerX + Math.cos(a1) * r2;
-                    const y2 = centerY + Math.sin(a1) * r2;
-                    const x3 = centerX + Math.cos(a2) * r1;
-                    const y3 = centerY + Math.sin(a2) * r1;
-
-                    // Radial edge
-                    edges.push({
-                        id1: `${r},${a}`, id2: `${r+1},${a}`,
-                        x1, y1, x2, y2,
-                        weight: Math.random(), invaded: false
-                    });
-
-                    // Circular edge
-                    if (r > 0) { // Don't bridge the center point multiple times
-                        edges.push({
-                            id1: `${r},${a}`, id2: `${r},${(a+1)%CONFIG.numRadials}`,
-                            x1, y1, x2: x3, y2: y3,
-                            weight: Math.random(), invaded: false
-                        });
-                    }
+            cols = Math.ceil(width / CONFIG.latticeScale) + 1;
+            rows = Math.ceil(height / CONFIG.latticeScale) + 1;
+            edges = []; redNodes.clear(); blueNodes.clear(); isFull = false;
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const x = i * CONFIG.latticeScale, y = j * CONFIG.latticeScale;
+                    if (i < cols - 1) edges.push({ n1: `${i},${j}`, n2: `${i+1},${j}`, x1: x, y1: y, x2: x + CONFIG.latticeScale, y2: y, weight: Math.random(), state: 0 });
+                    if (j < rows - 1) edges.push({ n1: `${i},${j}`, n2: `${i},${j+1}`, x1: x, y1: y, x2: x, y2: y + CONFIG.latticeScale, weight: Math.random(), state: 0 });
                 }
             }
-
-            // Start from center
-            invadedNodes.add(`0,0`);
-            updateBoundary();
-            drawBackground();
+            redNodes.add(`${Math.floor(cols/2)},${Math.floor(rows/2)}`);
+            blueNodes.add(`0,0`); blueNodes.add(`${cols-1},0`); blueNodes.add(`0,${rows-1}`); blueNodes.add(`${cols-1},${rows-1}`);
+            updateBoundaries();
             animate();
         }
 
-        function updateBoundary() {
-            boundaryEdges = edges.filter(e => {
-                if (e.invaded) return false;
-                const hasN1 = invadedNodes.has(e.id1);
-                const hasN2 = invadedNodes.has(e.id2);
-                return (hasN1 && !hasN2) || (!hasN1 && hasN2);
+        function updateBoundaries() {
+            redBoundary = []; blueBoundary = [];
+            edges.forEach(e => {
+                if (e.state !== 0) return;
+                const r1 = redNodes.has(e.n1), r2 = redNodes.has(e.n2), b1 = blueNodes.has(e.n1), b2 = blueNodes.has(e.n2);
+                if ((r1 && !r2) || (r2 && !r1)) redBoundary.push(e);
+                if ((b1 && !b2) || (b2 && !b1)) blueBoundary.push(e);
             });
         }
 
-        function drawBackground() {
+        function draw() {
             ctx.clearRect(0, 0, width, height);
-            ctx.strokeStyle = CONFIG.bgLineColor;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            edges.forEach(e => {
-                ctx.moveTo(e.x1, e.y1);
-                ctx.lineTo(e.x2, e.y2);
-            });
-            ctx.stroke();
+            ctx.lineWidth = 1; ctx.strokeStyle = CONFIG.bgLineColor;
+            ctx.beginPath(); edges.forEach(e => { if (e.state === 0) { ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); } }); ctx.stroke();
+            ctx.lineWidth = CONFIG.lineWidth; ctx.lineCap = 'round';
+            ctx.strokeStyle = CONFIG.colorRed; ctx.beginPath(); edges.forEach(e => { if (e.state === 1) { ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); } }); ctx.stroke();
+            ctx.strokeStyle = CONFIG.colorBlue; ctx.beginPath(); edges.forEach(e => { if (e.state === 2) { ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); } }); ctx.stroke();
         }
 
         function animate() {
-            for (let s = 0; s < CONFIG.speed; s++) {
-                if (boundaryEdges.length === 0) break;
-
-                boundaryEdges.sort((a, b) => a.weight - b.weight);
-                const nextEdge = boundaryEdges[0];
-                
-                nextEdge.invaded = true;
-                invadedNodes.add(nextEdge.id1);
-                invadedNodes.add(nextEdge.id2);
-                
-                ctx.strokeStyle = CONFIG.activeLineColor;
-                ctx.lineWidth = CONFIG.lineWidth;
-                ctx.lineCap = 'round';
-                ctx.beginPath();
-                ctx.moveTo(nextEdge.x1, nextEdge.y1);
-                ctx.lineTo(nextEdge.x2, nextEdge.y2);
-                ctx.stroke();
-
-                // Boundary check
-                const ringIndex = Math.max(
-                    parseInt(nextEdge.id1.split(',')[0]),
-                    parseInt(nextEdge.id2.split(',')[0])
-                );
-                
-                if (ringIndex >= CONFIG.numCircles - 1) {
-                    cancelAnimationFrame(animationId);
-                    setTimeout(init, 2000);
-                    return;
+            if (!isFull) {
+                for (let s = 0; s < CONFIG.growthSpeed; s++) {
+                    const r = redBoundary.sort((a,b)=>a.weight-b.weight)[0], b = blueBoundary.sort((a,b)=>a.weight-b.weight)[0];
+                    if (r) { r.state = 1; redNodes.add(r.n1); redNodes.add(r.n2); }
+                    if (b) { b.state = 2; blueNodes.add(b.n1); blueNodes.add(b.n2); }
+                    if (!r && !b) isFull = true;
+                    updateBoundaries();
                 }
-
-                updateBoundary();
+            } else {
+                // Drift Logic: Move an invaded edge to a neighbor
+                for (let i = 0; i < CONFIG.driftRate; i++) {
+                    const idx = Math.floor(Math.random() * edges.length);
+                    const e = edges[idx];
+                    if (e.state !== 0) {
+                        const originalState = e.state;
+                        // Find an empty neighbor edge sharing a node
+                        const neighbors = edges.filter(ne => ne.state === 0 && (ne.n1 === e.n1 || ne.n2 === e.n1 || ne.n1 === e.n2 || ne.n2 === e.n2));
+                        if (neighbors.length > 0) {
+                            const target = neighbors[Math.floor(Math.random() * neighbors.length)];
+                            target.state = originalState;
+                            e.state = 0;
+                            // Update node membership (simplified)
+                            if (originalState === 1) { redNodes.add(target.n1); redNodes.add(target.n2); }
+                            else { blueNodes.add(target.n1); blueNodes.add(target.n2); }
+                        }
+                    }
+                }
             }
-            animationId = requestAnimationFrame(animate);
+            draw();
+            requestAnimationFrame(animate);
         }
 
         window.addEventListener('resize', init);

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Variant 3.3: Voronoi Fracture</title>
+    <title>Variant 3: Bio-Invasion</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -11,150 +11,90 @@
     </style>
 </head>
 <body>
-    <div id="controls">VARIANT 3.3: VORONOI FRACTURE // CURVY & IRREGULAR</div>
+    <div id="controls">V3: BIO-INVASION // DIRECT COMPETITION SPECIES</div>
     <canvas id="canvas"></canvas>
-    <script src="https://unpkg.com/d3-delaunay@6"></script>
 
     <script>
         /** CONFIGURATION **/
         const CONFIG = {
-            numPoints: 400,         // Density of the Voronoi mesh
-            lineWidth: 2,           // Thickness of network
-            speed: 2,               // Edges per frame
-            bgLineColor: '#1d1d1d',   // Faint uninvaded color
-            activeLineColor: '#ff9f1c', // Deep orange / yellow
-            curviness: 0.3          // How much to meander
+            latticeScale: 30,
+            lineWidth: 3,
+            growthSpeed: 10,
+            predationRate: 0.1,    // Probability per frame that a fluid eats an adjacent enemy bond
+            colorRed: '#e63946',
+            colorBlue: '#91B4CC',
+            bgLineColor: '#222',
         };
 
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         
-        let width, height;
-        let edges = []; // { n1, n2, cp, weight, invaded }
-        let invadedNodes = new Set();
-        let boundaryEdges = [];
-        let animationId;
+        let width, height, cols, rows, edges = [], redNodes = new Set(), blueNodes = new Set();
+        let redBoundary = [], blueBoundary = [], isFull = false;
 
         function init() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
-            
-            const points = Array.from({ length: CONFIG.numPoints }, () => [
-                Math.random() * width,
-                Math.random() * height
-            ]);
-
-            const delaunay = d3.Delaunay.from(points);
-            const voronoi = delaunay.voronoi([0, 0, width, height]);
-            
-            edges = [];
-            invadedNodes.clear();
-            boundaryEdges = [];
-
-            // Extract unique edges from Voronoi cells
-            const cellEdges = new Map(); // key of sorted vertex pair
-            
-            for (let i = 0; i < points.length; i++) {
-                const polygon = voronoi.cellPolygon(i);
-                if (!polygon) continue;
-                
-                for (let j = 0; j < polygon.length - 1; j++) {
-                    const p1 = polygon[j];
-                    const p2 = polygon[j+1];
-                    const id = [p1, p2].map(p => p.join(',')).sort().join('|');
-                    
-                    if (!cellEdges.has(id)) {
-                        // Create a control point for the "curvy" effect
-                        const midX = (p1[0] + p2[0]) / 2;
-                        const midY = (p1[1] + p2[1]) / 2;
-                        const dx = p2[0] - p1[0];
-                        const dy = p2[1] - p1[1];
-                        const perpX = -dy * CONFIG.curviness;
-                        const perpY = dx * CONFIG.curviness;
-                        
-                        cellEdges.set(id, {
-                            n1: { x: p1[0], y: p1[1] },
-                            n2: { x: p2[0], y: p2[1] },
-                            cp: { x: midX + (Math.random() - 0.5) * perpX, y: midY + (Math.random() - 0.5) * perpY },
-                            id1: p1.join(','),
-                            id2: p2.join(','),
-                            weight: Math.random(),
-                            invaded: false
-                        });
-                    }
+            cols = Math.ceil(width / CONFIG.latticeScale) + 1;
+            rows = Math.ceil(height / CONFIG.latticeScale) + 1;
+            edges = []; redNodes.clear(); blueNodes.clear(); isFull = false;
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const x = i * CONFIG.latticeScale, y = j * CONFIG.latticeScale;
+                    if (i < cols - 1) edges.push({ n1: `${i},${j}`, n2: `${i+1},${j}`, x1: x, y1: y, x2: x + CONFIG.latticeScale, y2: y, weight: Math.random(), state: 0 });
+                    if (j < rows - 1) edges.push({ n1: `${i},${j}`, n2: `${i},${j+1}`, x1: x, y1: y, x2: x, y2: y + CONFIG.latticeScale, weight: Math.random(), state: 0 });
                 }
             }
-            
-            edges = Array.from(cellEdges.values());
-
-            // Start from the node closest to center
-            let startNodeId = edges[0].id1;
-            let minDist = Infinity;
-            edges.forEach(e => {
-                const d = Math.hypot(e.n1.x - width/2, e.n1.y - height/2);
-                if (d < minDist) {
-                    minDist = d;
-                    startNodeId = e.id1;
-                }
-            });
-
-            invadedNodes.add(startNodeId);
-            updateBoundary();
-            drawBackground();
+            redNodes.add(`${Math.floor(cols/2)},${Math.floor(rows/2)}`);
+            blueNodes.add(`0,0`); blueNodes.add(`${cols-1},0`); blueNodes.add(`0,${rows-1}`); blueNodes.add(`${cols-1},${rows-1}`);
+            updateBoundaries();
             animate();
         }
 
-        function updateBoundary() {
-            boundaryEdges = edges.filter(e => {
-                if (e.invaded) return false;
-                const hasN1 = invadedNodes.has(e.id1);
-                const hasN2 = invadedNodes.has(e.id2);
-                return (hasN1 && !hasN2) || (!hasN1 && hasN2);
+        function updateBoundaries() {
+            redBoundary = []; blueBoundary = [];
+            edges.forEach(e => {
+                if (e.state !== 0) return;
+                const r1 = redNodes.has(e.n1), r2 = redNodes.has(e.n2), b1 = blueNodes.has(e.n1), b2 = blueNodes.has(e.n2);
+                if ((r1 && !r2 && !blueNodes.has(e.n2)) || (r2 && !r1 && !blueNodes.has(e.n1))) redBoundary.push(e);
+                if ((b1 && !b2 && !redNodes.has(e.n2)) || (b2 && !b1 && !redNodes.has(e.n1))) blueBoundary.push(e);
             });
         }
 
-        function drawBackground() {
+        function draw() {
             ctx.clearRect(0, 0, width, height);
-            ctx.strokeStyle = CONFIG.bgLineColor;
-            ctx.lineWidth = 1;
-            edges.forEach(e => {
-                ctx.beginPath();
-                ctx.moveTo(e.n1.x, e.n1.y);
-                ctx.quadraticCurveTo(e.cp.x, e.cp.y, e.n2.x, e.n2.y);
-                ctx.stroke();
-            });
+            ctx.lineWidth = 1; ctx.strokeStyle = CONFIG.bgLineColor;
+            ctx.beginPath(); edges.forEach(e => { if (e.state === 0) { ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); } }); ctx.stroke();
+            ctx.lineWidth = CONFIG.lineWidth; ctx.lineCap = 'round';
+            ctx.strokeStyle = CONFIG.colorRed; ctx.beginPath(); edges.forEach(e => { if (e.state === 1) { ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); } }); ctx.stroke();
+            ctx.strokeStyle = CONFIG.colorBlue; ctx.beginPath(); edges.forEach(e => { if (e.state === 2) { ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); } }); ctx.stroke();
         }
 
         function animate() {
-            for (let s = 0; s < CONFIG.speed; s++) {
-                if (boundaryEdges.length === 0) break;
-
-                boundaryEdges.sort((a, b) => a.weight - b.weight);
-                const nextEdge = boundaryEdges[0];
-                
-                nextEdge.invaded = true;
-                invadedNodes.add(nextEdge.id1);
-                invadedNodes.add(nextEdge.id2);
-                
-                ctx.strokeStyle = CONFIG.activeLineColor;
-                ctx.lineWidth = CONFIG.lineWidth;
-                ctx.lineCap = 'round';
-                ctx.beginPath();
-                ctx.moveTo(nextEdge.n1.x, nextEdge.n1.y);
-                ctx.quadraticCurveTo(nextEdge.cp.x, nextEdge.cp.y, nextEdge.n2.x, nextEdge.n2.y);
-                ctx.stroke();
-
-                // Boundary check
-                if (nextEdge.n1.x < 5 || nextEdge.n1.x > width - 5 || nextEdge.n1.y < 5 || nextEdge.n1.y > height - 5 ||
-                    nextEdge.n2.x < 5 || nextEdge.n2.x > width - 5 || nextEdge.n2.y < 5 || nextEdge.n2.y > height - 5) {
-                    cancelAnimationFrame(animationId);
-                    setTimeout(init, 2000);
-                    return;
+            if (!isFull) {
+                for (let s = 0; s < CONFIG.growthSpeed; s++) {
+                    const r = redBoundary.sort((a,b)=>a.weight-b.weight)[0], b = blueBoundary.sort((a,b)=>a.weight-b.weight)[0];
+                    if (r) { r.state = 1; redNodes.add(r.n1); redNodes.add(r.n2); }
+                    if (b) { b.state = 2; blueNodes.add(b.n1); blueNodes.add(b.n2); }
+                    if (!r && !b) isFull = true;
+                    updateBoundaries();
                 }
-
-                updateBoundary();
+            } else {
+                // Predation Logic: Red can eat Blue edges if they are adjacent
+                edges.forEach(e => {
+                    if (Math.random() < CONFIG.predationRate / 100) {
+                        const canRedEat = (redNodes.has(e.n1) || redNodes.has(e.n2)) && e.state === 2;
+                        const canBlueEat = (blueNodes.has(e.n1) || blueNodes.has(e.n2)) && e.state === 1;
+                        if (canRedEat && Math.random() < 0.5) { e.state = 0; e.weight = Math.random(); }
+                        if (canBlueEat && !canRedEat) { e.state = 0; e.weight = Math.random(); }
+                    }
+                });
+                updateBoundaries();
+                if (redBoundary.length > 0) redBoundary.sort((a,b)=>a.weight-b.weight)[0].state = 1;
+                if (blueBoundary.length > 0) blueBoundary.sort((a,b)=>a.weight-b.weight)[0].state = 2;
             }
-            animationId = requestAnimationFrame(animate);
+            draw();
+            requestAnimationFrame(animate);
         }
 
         window.addEventListener('resize', init);
