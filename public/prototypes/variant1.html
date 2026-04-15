@@ -3,118 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Percolation Variant 1: Click-to-Percolate</title>
+    <title>Variant 3.1: Dual-Fluid Competition</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1A1A1A; }
-        canvas { display: block; }
-        #info {
-            position: fixed; top: 10px; left: 10px;
-            color: #555; font-family: sans-serif; pointer-events: none;
-        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #controls { position: absolute; top: 10px; left: 10px; color: #555; font-family: monospace; font-size: 10px; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="info">Click anywhere to start percolation</div>
+    <div id="controls">VARIANT 3.1: RED VS BLUE COMPETITION // DYNAMIC FRONTIER</div>
     <canvas id="canvas"></canvas>
-    <script>
-        // --- GLOBAL CONSTANTS ---
-        const GRID_SIZE = 40;       // Number of rows/cols
-        const CELL_SIZE = 20;       // Size of each cell in pixels (auto-scales if needed)
-        const P_THRESHOLD = 0.5927; // Standard site percolation threshold for square lattice
-        const ANIMATION_SPEED = 50; // ms per step
-        const COLOR_EMPTY = '#1A1A1A';
-        const COLOR_OCCUPIED = '#333';
-        const COLOR_PERCOLATED = '#00FFCC';
-        const LINE_WIDTH = 1;
 
-        // --- STATE ---
+    <script>
+        /** CONFIGURATION **/
+        const CONFIG = {
+            latticeScale: 30,         // Grid size
+            lineWidth: 3,            // Thickness of invading network
+            growthSpeed: 8,          // Edges added per frame during growth
+            decayRate: 3,            // Edges reset per frame once full
+            colorRed: '#e63946',     // Primary fluid
+            colorBlue: '#91B4CC',    // Complement/Competitor
+            bgLineColor: '#222',     // Faint uninvaded color
+        };
+
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        
         let width, height, cols, rows;
-        let grid = []; // 0: empty, 1: occupied, 2: percolated
+        let edges = []; // { x1, y1, x2, y2, weight, state: 0|1|2 }
+        let redNodes = new Set();
+        let blueNodes = new Set();
+        let redBoundary = [];
+        let blueBoundary = [];
+        let isFull = false;
 
         function init() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
-            cols = Math.ceil(width / CELL_SIZE);
-            rows = Math.ceil(height / CELL_SIZE);
-            resetGrid();
-            draw();
+            
+            cols = Math.ceil(width / CONFIG.latticeScale) + 1;
+            rows = Math.ceil(height / CONFIG.latticeScale) + 1;
+            
+            edges = [];
+            redNodes.clear();
+            blueNodes.clear();
+            isFull = false;
+
+            // Generate lattice
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const x = i * CONFIG.latticeScale;
+                    const y = j * CONFIG.latticeScale;
+                    if (i < cols - 1) {
+                        edges.push({ 
+                            n1: `${i},${j}`, n2: `${i+1},${j}`,
+                            x1: x, y1: y, x2: x + CONFIG.latticeScale, y2: y,
+                            weight: Math.random(), state: 0
+                        });
+                    }
+                    if (j < rows - 1) {
+                        edges.push({ 
+                            n1: `${i},${j}`, n2: `${i},${j+1}`,
+                            x1: x, y1: y, x2: x, y2: y + CONFIG.latticeScale,
+                            weight: Math.random(), state: 0
+                        });
+                    }
+                }
+            }
+
+            // Seeds
+            // Red starts at center
+            redNodes.add(`${Math.floor(cols/2)},${Math.floor(rows/2)}`);
+            // Blue starts at corners
+            blueNodes.add(`0,0`);
+            blueNodes.add(`${cols-1},0`);
+            blueNodes.add(`0,${rows-1}`);
+            blueNodes.add(`${cols-1},${rows-1}`);
+
+            updateBoundaries();
+            drawAll();
+            animate();
         }
 
-        function resetGrid() {
-            grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+        function updateBoundaries() {
+            redBoundary = [];
+            blueBoundary = [];
+            edges.forEach(e => {
+                if (e.state !== 0) return;
+                
+                const r1 = redNodes.has(e.n1), r2 = redNodes.has(e.n2);
+                const b1 = blueNodes.has(e.n1), b2 = blueNodes.has(e.n2);
+
+                if ((r1 && !r2 && !blueNodes.has(e.n2)) || (r2 && !r1 && !blueNodes.has(e.n1))) {
+                    redBoundary.push(e);
+                }
+                if ((b1 && !b2 && !redNodes.has(e.n2)) || (b2 && !b1 && !redNodes.has(e.n1))) {
+                    blueBoundary.push(e);
+                }
+            });
         }
 
-        function draw() {
+        function drawAll() {
             ctx.clearRect(0, 0, width, height);
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (grid[r][c] === 0) continue;
-                    ctx.fillStyle = grid[r][c] === 2 ? COLOR_PERCOLATED : COLOR_OCCUPIED;
-                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
+            
+            // Background grid
+            ctx.strokeStyle = CONFIG.bgLineColor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            edges.forEach(e => {
+                if (e.state === 0) {
+                    ctx.moveTo(e.x1, e.y1);
+                    ctx.lineTo(e.x2, e.y2);
                 }
-            }
+            });
+            ctx.stroke();
+
+            // Red network
+            ctx.strokeStyle = CONFIG.colorRed;
+            ctx.lineWidth = CONFIG.lineWidth;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            edges.forEach(e => {
+                if (e.state === 1) {
+                    ctx.moveTo(e.x1, e.y1);
+                    ctx.lineTo(e.x2, e.y2);
+                }
+            });
+            ctx.stroke();
+
+            // Blue network
+            ctx.strokeStyle = CONFIG.colorBlue;
+            ctx.beginPath();
+            edges.forEach(e => {
+                if (e.state === 2) {
+                    ctx.moveTo(e.x1, e.y1);
+                    ctx.lineTo(e.x2, e.y2);
+                }
+            });
+            ctx.stroke();
         }
 
-        function percolate(startR, startC) {
-            // First, randomly populate the grid based on P_THRESHOLD
-            resetGrid();
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (Math.random() < P_THRESHOLD) {
-                        grid[r][c] = 1;
+        function animate() {
+            if (!isFull) {
+                // INITIAL GROWTH PHASE
+                for (let s = 0; s < CONFIG.growthSpeed; s++) {
+                    const rEdge = redBoundary.sort((a,b)=>a.weight-b.weight)[0];
+                    const bEdge = blueBoundary.sort((a,b)=>a.weight-b.weight)[0];
+
+                    if (rEdge) {
+                        rEdge.state = 1;
+                        redNodes.add(rEdge.n1);
+                        redNodes.add(rEdge.n2);
+                    }
+                    if (bEdge) {
+                        bEdge.state = 2;
+                        blueNodes.add(bEdge.n1);
+                        blueNodes.add(bEdge.n2);
+                    }
+                    
+                    if (!rEdge && !bEdge) {
+                        isFull = true;
+                        break;
+                    }
+                    updateBoundaries();
+                }
+            } else {
+                // COMPETITION PHASE
+                for (let d = 0; d < CONFIG.decayRate; d++) {
+                    // Randomly kill a bond
+                    const occupied = edges.filter(e => e.state !== 0);
+                    if (occupied.length > 0) {
+                        const victim = occupied[Math.floor(Math.random()*occupied.length)];
+                        victim.state = 0;
+                        victim.weight = Math.random(); // Scramble weight for variety
+                    }
+                    updateBoundaries();
+                    
+                    // Instantly reclaim
+                    if (redBoundary.length > 0 && Math.random() < 0.5) {
+                        const r = redBoundary.sort((a,b)=>a.weight-b.weight)[0];
+                        r.state = 1;
+                    } else if (blueBoundary.length > 0) {
+                        const b = blueBoundary.sort((a,b)=>a.weight-b.weight)[0];
+                        b.state = 2;
                     }
                 }
             }
 
-            // Ensure start point is occupied
-            grid[startR][startC] = 1;
-
-            // BFS for percolation
-            let queue = [{ r: startR, c: startC }];
-            let visited = new Set();
-            visited.add(`${startR},${startC}`);
-
-            function step() {
-                if (queue.length === 0) return;
-
-                let nextQueue = [];
-                for (let pos of queue) {
-                    const { r, c } = pos;
-                    if (grid[r][c] === 1) {
-                        grid[r][c] = 2; // Percolate
-                    }
-
-                    const neighbors = [
-                        { r: r - 1, c }, { r: r + 1, c },
-                        { r, c: c - 1 }, { r, c: c + 1 }
-                    ];
-
-                    for (let n of neighbors) {
-                        if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols &&
-                            grid[n.r][n.c] === 1 && !visited.has(`${n.r},${n.c}`)) {
-                            visited.add(`${n.r},${n.c}`);
-                            nextQueue.push(n);
-                        }
-                    }
-                }
-                queue = nextQueue;
-                draw();
-                setTimeout(step, ANIMATION_SPEED);
-            }
-
-            step();
+            drawAll();
+            requestAnimationFrame(animate);
         }
-
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            const c = Math.floor(x / CELL_SIZE);
-            const r = Math.floor(y / CELL_SIZE);
-            percolate(r, c);
-        });
 
         window.addEventListener('resize', init);
         init();

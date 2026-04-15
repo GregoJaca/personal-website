@@ -3,105 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Percolation Variant 3: Autonomous Invasion</title>
+    <title>Variant 3.3: Voronoi Fracture</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1A1A1A; }
-        canvas { display: block; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #controls { position: absolute; top: 10px; left: 10px; color: #555; font-family: monospace; font-size: 10px; pointer-events: none; }
     </style>
 </head>
 <body>
+    <div id="controls">VARIANT 3.3: VORONOI FRACTURE // CURVY & IRREGULAR</div>
     <canvas id="canvas"></canvas>
-    <script>
-        // --- GLOBAL CONSTANTS ---
-        const CELL_SIZE = 10;
-        const P_THRESHOLD = 0.6;    // Probability that a cell is "porous"
-        const INVASION_SPEED = 20;  // MS between steps
-        const COLOR_EMPTY = '#1A1A1A';
-        const COLOR_POROUS = '#222';
-        const COLOR_FLUID = '#00AAFF';
-        const LINE_WIDTH = 0.5;
+    <script src="https://unpkg.com/d3-delaunay@6"></script>
 
-        // --- STATE ---
+    <script>
+        /** CONFIGURATION **/
+        const CONFIG = {
+            numPoints: 400,         // Density of the Voronoi mesh
+            lineWidth: 2,           // Thickness of network
+            speed: 2,               // Edges per frame
+            bgLineColor: '#1d1d1d',   // Faint uninvaded color
+            activeLineColor: '#ff9f1c', // Deep orange / yellow
+            curviness: 0.3          // How much to meander
+        };
+
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        let width, height, cols, rows;
-        let grid = []; // 0: solid, 1: porous, 2: filled
-        let queue = [];
+        
+        let width, height;
+        let edges = []; // { n1, n2, cp, weight, invaded }
+        let invadedNodes = new Set();
+        let boundaryEdges = [];
+        let animationId;
 
         function init() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
-            cols = Math.ceil(width / CELL_SIZE);
-            rows = Math.ceil(height / CELL_SIZE);
-            reset();
-        }
+            
+            const points = Array.from({ length: CONFIG.numPoints }, () => [
+                Math.random() * width,
+                Math.random() * height
+            ]);
 
-        function reset() {
-            grid = Array.from({ length: rows }, () => Array(cols).fill(0));
-            queue = [];
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (Math.random() < P_THRESHOLD) {
-                        grid[r][c] = 1;
+            const delaunay = d3.Delaunay.from(points);
+            const voronoi = delaunay.voronoi([0, 0, width, height]);
+            
+            edges = [];
+            invadedNodes.clear();
+            boundaryEdges = [];
+
+            // Extract unique edges from Voronoi cells
+            const cellEdges = new Map(); // key of sorted vertex pair
+            
+            for (let i = 0; i < points.length; i++) {
+                const polygon = voronoi.cellPolygon(i);
+                if (!polygon) continue;
+                
+                for (let j = 0; j < polygon.length - 1; j++) {
+                    const p1 = polygon[j];
+                    const p2 = polygon[j+1];
+                    const id = [p1, p2].map(p => p.join(',')).sort().join('|');
+                    
+                    if (!cellEdges.has(id)) {
+                        // Create a control point for the "curvy" effect
+                        const midX = (p1[0] + p2[0]) / 2;
+                        const midY = (p1[1] + p2[1]) / 2;
+                        const dx = p2[0] - p1[0];
+                        const dy = p2[1] - p1[1];
+                        const perpX = -dy * CONFIG.curviness;
+                        const perpY = dx * CONFIG.curviness;
+                        
+                        cellEdges.set(id, {
+                            n1: { x: p1[0], y: p1[1] },
+                            n2: { x: p2[0], y: p2[1] },
+                            cp: { x: midX + (Math.random() - 0.5) * perpX, y: midY + (Math.random() - 0.5) * perpY },
+                            id1: p1.join(','),
+                            id2: p2.join(','),
+                            weight: Math.random(),
+                            invaded: false
+                        });
                     }
                 }
             }
-            // Start invasion from top
-            for (let c = 0; c < cols; c++) {
-                if (grid[0][c] === 1) {
-                    queue.push({ r: 0, c });
+            
+            edges = Array.from(cellEdges.values());
+
+            // Start from the node closest to center
+            let startNodeId = edges[0].id1;
+            let minDist = Infinity;
+            edges.forEach(e => {
+                const d = Math.hypot(e.n1.x - width/2, e.n1.y - height/2);
+                if (d < minDist) {
+                    minDist = d;
+                    startNodeId = e.id1;
                 }
-            }
-            draw();
+            });
+
+            invadedNodes.add(startNodeId);
+            updateBoundary();
+            drawBackground();
             animate();
         }
 
-        function draw() {
+        function updateBoundary() {
+            boundaryEdges = edges.filter(e => {
+                if (e.invaded) return false;
+                const hasN1 = invadedNodes.has(e.id1);
+                const hasN2 = invadedNodes.has(e.id2);
+                return (hasN1 && !hasN2) || (!hasN1 && hasN2);
+            });
+        }
+
+        function drawBackground() {
             ctx.clearRect(0, 0, width, height);
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (grid[r][c] === 0) continue;
-                    ctx.fillStyle = grid[r][c] === 2 ? COLOR_FLUID : COLOR_POROUS;
-                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
-                }
-            }
+            ctx.strokeStyle = CONFIG.bgLineColor;
+            ctx.lineWidth = 1;
+            edges.forEach(e => {
+                ctx.beginPath();
+                ctx.moveTo(e.n1.x, e.n1.y);
+                ctx.quadraticCurveTo(e.cp.x, e.cp.y, e.n2.x, e.n2.y);
+                ctx.stroke();
+            });
         }
 
         function animate() {
-            if (queue.length === 0) {
-                setTimeout(reset, 2000); // Restart after a delay
-                return;
-            }
+            for (let s = 0; s < CONFIG.speed; s++) {
+                if (boundaryEdges.length === 0) break;
 
-            // Invade next step
-            let nextQueue = [];
-            let processed = false;
-            
-            // To make it look like fluid, we can process a few at a time or use a priority queue for "least resistance"
-            // Here we'll just do a standard BFS invasion
-            const batchSize = Math.max(1, Math.floor(cols / 10));
-            
-            for (let i = 0; i < batchSize && queue.length > 0; i++) {
-                const { r, c } = queue.shift();
-                if (grid[r][c] === 1) {
-                    grid[r][c] = 2;
-                    processed = true;
+                boundaryEdges.sort((a, b) => a.weight - b.weight);
+                const nextEdge = boundaryEdges[0];
+                
+                nextEdge.invaded = true;
+                invadedNodes.add(nextEdge.id1);
+                invadedNodes.add(nextEdge.id2);
+                
+                ctx.strokeStyle = CONFIG.activeLineColor;
+                ctx.lineWidth = CONFIG.lineWidth;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(nextEdge.n1.x, nextEdge.n1.y);
+                ctx.quadraticCurveTo(nextEdge.cp.x, nextEdge.cp.y, nextEdge.n2.x, nextEdge.n2.y);
+                ctx.stroke();
 
-                    const neighbors = [
-                        { r: r + 1, c }, { r: r, c: c - 1 }, { r, c: c + 1 }, { r: r - 1, c }
-                    ];
-
-                    for (let n of neighbors) {
-                        if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols && grid[n.r][n.c] === 1) {
-                            // Check if already in queue or about to be
-                            queue.push(n);
-                        }
-                    }
+                // Boundary check
+                if (nextEdge.n1.x < 5 || nextEdge.n1.x > width - 5 || nextEdge.n1.y < 5 || nextEdge.n1.y > height - 5 ||
+                    nextEdge.n2.x < 5 || nextEdge.n2.x > width - 5 || nextEdge.n2.y < 5 || nextEdge.n2.y > height - 5) {
+                    cancelAnimationFrame(animationId);
+                    setTimeout(init, 2000);
+                    return;
                 }
-            }
 
-            draw();
-            setTimeout(animate, INVASION_SPEED);
+                updateBoundary();
+            }
+            animationId = requestAnimationFrame(animate);
         }
 
         window.addEventListener('resize', init);

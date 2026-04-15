@@ -69,12 +69,17 @@ import { LAYOUT_CONFIG, SOCIAL_LINKS } from '../config';
 						href={`${import.meta.env.BASE_URL}prototypes/variant${v}.html`}
 						class="block p-4 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 transition-colors"
 					>
-						<h3 class="font-medium text-zinc-200">Percolation Variant {v}</h3>
+						<h3 class="font-medium text-zinc-200">
+                            {v === 1 && "3.1: Bond Labyrinth"}
+                            {v === 2 && "3.2: Honeycomb Lattice"}
+                            {v === 3 && "3.3: Voronoi Fracture"}
+                            {v === 4 && "3.4: Radial Web"}
+                        </h3>
 						<p class="text-sm text-zinc-500 mt-1">
-							{v === 1 && "Interactive: Click-to-percolate from cursor."}
-							{v === 2 && "Scroll-driven: Threshold maps to scroll position."}
-							{v === 3 && "Autonomous: Continuous invasion simulation."}
-							{v === 4 && "Static: Seed-based spanning cluster highlights."}
+							{v === 1 && "Square grid bond percolation with invasive flow."}
+							{v === 2 && "Hexagonal grid with organic 3-way branching."}
+							{v === 3 && "Irregular Voronoi graph with meandering curves."}
+							{v === 4 && "Polar coordinate web expanding from the center."}
 						</p>
 					</a>
 				))}

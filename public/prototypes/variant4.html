@@ -3,114 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Percolation Variant 4: Static Threshold Fade</title>
+    <title>Variant 3.4: Radial Web</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1A1A1A; }
-        canvas { display: block; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #controls { position: absolute; top: 10px; left: 10px; color: #555; font-family: monospace; font-size: 10px; pointer-events: none; }
     </style>
 </head>
 <body>
+    <div id="controls">VARIANT 3.4: RADIAL WEB // SPIDERWEB INFILTRATION</div>
     <canvas id="canvas"></canvas>
-    <script>
-        // --- GLOBAL CONSTANTS ---
-        const CELL_SIZE = 20;
-        const P_THRESHOLD = 0.5927;
-        const CYCLE_DURATION = 5000; // ms for one full cycle
-        const COLOR_EMPTY = '#1A1A1A';
-        const COLOR_OCCUPIED = '#222';
-        const COLOR_PERCOLATED = '#FF00FF';
-        const LINE_WIDTH = 1;
 
-        // --- STATE ---
+    <script>
+        /** CONFIGURATION **/
+        const CONFIG = {
+            numCircles: 20,         // Number of concentric rings
+            numRadials: 40,         // Number of lines originating from center
+            lineWidth: 2,           // Thickness of web paths
+            speed: 5,               // Edges per frame
+            bgLineColor: '#222',    // Faint uninvaded color
+            activeLineColor: '#70e000', // Lime green / Web color
+        };
+
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        let width, height, cols, rows;
-        let grid = [];
-        let startTime = Date.now();
+        
+        let width, height, centerX, centerY;
+        let edges = []; // { n1, n2, x1, y1, x2, y2, weight, invaded }
+        let invadedNodes = new Set();
+        let boundaryEdges = [];
+        let animationId;
 
         function init() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
-            cols = Math.ceil(width / CELL_SIZE);
-            rows = Math.ceil(height / CELL_SIZE);
-            newSeed();
+            centerX = width / 2;
+            centerY = height / 2;
+            
+            edges = [];
+            invadedNodes.clear();
+            boundaryEdges = [];
+
+            const maxRadius = Math.max(width, height) / 1.5;
+            const radiusStep = maxRadius / CONFIG.numCircles;
+            const angleStep = (Math.PI * 2) / CONFIG.numRadials;
+
+            // Generate nodes (r, a) where r is ring index, a is radial index
+            // Edges connect (r, a) to (r+1, a) [radial] and (r, a) to (r, a+1) [circular]
+            for (let r = 0; r < CONFIG.numCircles; r++) {
+                for (let a = 0; a < CONFIG.numRadials; a++) {
+                    const r1 = r * radiusStep;
+                    const r2 = (r + 1) * radiusStep;
+                    const a1 = a * angleStep;
+                    const a2 = ((a + 1) % CONFIG.numRadials) * angleStep;
+
+                    const x1 = centerX + Math.cos(a1) * r1;
+                    const y1 = centerY + Math.sin(a1) * r1;
+                    const x2 = centerX + Math.cos(a1) * r2;
+                    const y2 = centerY + Math.sin(a1) * r2;
+                    const x3 = centerX + Math.cos(a2) * r1;
+                    const y3 = centerY + Math.sin(a2) * r1;
+
+                    // Radial edge
+                    edges.push({
+                        id1: `${r},${a}`, id2: `${r+1},${a}`,
+                        x1, y1, x2, y2,
+                        weight: Math.random(), invaded: false
+                    });
+
+                    // Circular edge
+                    if (r > 0) { // Don't bridge the center point multiple times
+                        edges.push({
+                            id1: `${r},${a}`, id2: `${r},${(a+1)%CONFIG.numRadials}`,
+                            x1, y1, x2: x3, y2: y3,
+                            weight: Math.random(), invaded: false
+                        });
+                    }
+                }
+            }
+
+            // Start from center
+            invadedNodes.add(`0,0`);
+            updateBoundary();
+            drawBackground();
             animate();
         }
 
-        function newSeed() {
-            grid = Array.from({ length: rows }, () => Array(cols).fill(0));
-            // Populate
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (Math.random() < P_THRESHOLD) {
-                        grid[r][c] = 1;
-                    }
-                }
-            }
+        function updateBoundary() {
+            boundaryEdges = edges.filter(e => {
+                if (e.invaded) return false;
+                const hasN1 = invadedNodes.has(e.id1);
+                const hasN2 = invadedNodes.has(e.id2);
+                return (hasN1 && !hasN2) || (!hasN1 && hasN2);
+            });
+        }
 
-            // Find spanning cluster (from top to bottom)
-            let queue = [];
-            let visited = new Set();
-            for (let c = 0; c < cols; c++) {
-                if (grid[0][c] === 1) {
-                    queue.push({ r: 0, c });
-                    visited.add(`0,${c}`);
-                }
-            }
-
-            let spanning = false;
-            let cluster = [];
-            while (queue.length > 0) {
-                const { r, c } = queue.shift();
-                cluster.push({ r, c });
-                if (r === rows - 1) spanning = true;
-
-                const neighbors = [
-                    { r: r + 1, c }, { r: r, c: c - 1 }, { r, c: c + 1 }, { r: r - 1, c }
-                ];
-
-                for (let n of neighbors) {
-                    if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols &&
-                        grid[n.r][n.c] === 1 && !visited.has(`${n.r},${n.c}`)) {
-                        visited.add(`${n.r},${n.c}`);
-                        queue.push(n);
-                    }
-                }
-            }
-
-            if (spanning) {
-                for (let pos of cluster) {
-                    grid[pos.r][pos.c] = 2; // Spanning cluster
-                }
-            }
-            
-            startTime = Date.now();
+        function drawBackground() {
+            ctx.clearRect(0, 0, width, height);
+            ctx.strokeStyle = CONFIG.bgLineColor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            edges.forEach(e => {
+                ctx.moveTo(e.x1, e.y1);
+                ctx.lineTo(e.x2, e.y2);
+            });
+            ctx.stroke();
         }
 
         function animate() {
-            const now = Date.now();
-            const elapsed = now - startTime;
-            
-            if (elapsed > CYCLE_DURATION) {
-                newSeed();
-                requestAnimationFrame(animate);
-                return;
-            }
+            for (let s = 0; s < CONFIG.speed; s++) {
+                if (boundaryEdges.length === 0) break;
 
-            const alpha = Math.sin((elapsed / CYCLE_DURATION) * Math.PI); // Fade in/out
-            
-            ctx.clearRect(0, 0, width, height);
-            ctx.globalAlpha = alpha;
+                boundaryEdges.sort((a, b) => a.weight - b.weight);
+                const nextEdge = boundaryEdges[0];
+                
+                nextEdge.invaded = true;
+                invadedNodes.add(nextEdge.id1);
+                invadedNodes.add(nextEdge.id2);
+                
+                ctx.strokeStyle = CONFIG.activeLineColor;
+                ctx.lineWidth = CONFIG.lineWidth;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(nextEdge.x1, nextEdge.y1);
+                ctx.lineTo(nextEdge.x2, nextEdge.y2);
+                ctx.stroke();
 
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (grid[r][c] === 0) continue;
-                    ctx.fillStyle = grid[r][c] === 2 ? COLOR_PERCOLATED : COLOR_OCCUPIED;
-                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - LINE_WIDTH, CELL_SIZE - LINE_WIDTH);
+                // Boundary check
+                const ringIndex = Math.max(
+                    parseInt(nextEdge.id1.split(',')[0]),
+                    parseInt(nextEdge.id2.split(',')[0])
+                );
+                
+                if (ringIndex >= CONFIG.numCircles - 1) {
+                    cancelAnimationFrame(animationId);
+                    setTimeout(init, 2000);
+                    return;
                 }
-            }
 
-            requestAnimationFrame(animate);
+                updateBoundary();
+            }
+            animationId = requestAnimationFrame(animate);
         }
 
         window.addEventListener('resize', init);
