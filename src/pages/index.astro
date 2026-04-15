@@ -61,30 +61,6 @@ import { LAYOUT_CONFIG, SOCIAL_LINKS } from '../config';
 			<GitHubGraph client:visible />
 		</section>
 
-		<section class="mt-16 mb-24">
-			<h2 class="text-xl font-semibold mb-6 text-zinc-200">Design Prototypes</h2>
-			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-				{[1, 2, 3, 4].map(v => (
-					<a 
-						href={`${import.meta.env.BASE_URL}prototypes/variant${v}.html`}
-						class="block p-4 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 transition-colors"
-					>
-						<h3 class="font-medium text-zinc-200">
-                            {v === 1 && "v1: Regional Waves"}
-                            {v === 2 && "v2: Surface Tension"}
-                            {v === 3 && "v3: Bio-Invasion"}
-                            {v === 4 && "v4: Diffusive Flow"}
-                        </h3>
-						<p class="text-sm text-zinc-500 mt-1">
-							{v === 1 && "Localized 'storms' of aggression and retreat."}
-							{v === 2 && "Cohesive, sloshing organic flow between frontiers."}
-							{v === 3 && "Direct species competition with predation dynamics."}
-							{v === 4 && "Meandering drift through constant bond migration."}
-						</p>
-					</a>
-				))}
-			</div>
-		</section>
 	</main>
 
 </Layout>

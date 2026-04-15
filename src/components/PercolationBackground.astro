@@ -8,7 +8,6 @@
         latticeScale: 35,         // Larger grid for background
         lineWidth: 2,            // Subtle thickness
         growthSpeed: 4,          // Slower, meditative growth
-        decayRate: 2,            // Subtle shifting
         colorRed: 'rgba(230, 57, 70, 0.3)',   // Transparent Red
         colorBlue: 'rgba(145, 180, 204, 0.3)',  // Transparent Blue
         bgLineColor: 'rgba(40, 40, 40, 0.15)',  // Very faint grid
@@ -145,21 +144,6 @@
                 
                 if (!rEdge && !bEdge) { isFull = true; break; }
                 updateBoundaries();
-            }
-        } else {
-            for (let d = 0; d < CONFIG.decayRate; d++) {
-                const idx = Math.floor(Math.random() * edges.length);
-                const victim = edges[idx];
-                if (victim.state !== 0) {
-                    victim.state = 0;
-                    victim.weight = Math.random();
-                }
-                updateBoundaries();
-                if (redBoundary.length > 0 && Math.random() < 0.5) {
-                    redBoundary.sort((a,b)=>a.weight-b.weight)[0].state = 1;
-                } else if (blueBoundary.length > 0) {
-                    blueBoundary.sort((a,b)=>a.weight-b.weight)[0].state = 2;
-                }
             }
         }
 
